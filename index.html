@@ -1,0 +1,624 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>XOR Neural Network Visualization</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 20px;
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+    .container {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 20px;
+    }
+    .panel {
+      flex: 1;
+      min-width: 300px;
+      background: #f5f5f5;
+      padding: 20px;
+      border-radius: 8px;
+    }
+    canvas {
+      border: 1px solid #ddd;
+      background: white;
+    }
+    button {
+      padding: 8px 15px;
+      margin: 0 5px 10px 0;
+      background: #4CAF50;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    button:hover {
+      background: #45a049;
+    }
+    #initializeBtn {
+      background: #2196F3;
+    }
+    #stepBtn {
+      background: #9C27B0;
+    }
+    #stopBtn {
+      background: #F44336;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-bottom: 15px;
+    }
+    th, td {
+      border: 1px solid #ddd;
+      padding: 8px;
+      text-align: center;
+    }
+    th {
+      background-color: #f2f2f2;
+    }
+    .prediction {
+      margin-bottom: 10px;
+      padding: 8px;
+      border-radius: 4px;
+    }
+    .correct {
+      background-color: rgba(76, 175, 80, 0.2);
+    }
+    .incorrect {
+      background-color: rgba(244, 67, 54, 0.2);
+    }
+    .metrics {
+      display: flex;
+      gap: 15px;
+      margin-bottom: 15px;
+    }
+    .metric-box {
+      background: white;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      padding: 10px;
+      flex: 1;
+      text-align: center;
+    }
+    .metric-value {
+      font-size: 20px;
+      font-weight: bold;
+    }
+  </style>
+</head>
+<body>
+  <h1>Neural Network Learning XOR</h1>
+  
+  <div>
+    <button id="initializeBtn">Initialize Network</button>
+    <button id="trainBtn">Train Network</button>
+    <button id="stepBtn">Step (1 Epoch)</button>
+    <button id="stopBtn" disabled>Stop Training</button>
+  </div>
+
+  <div class="metrics">
+    <div class="metric-box">
+      <div>Current Epoch</div>
+      <div id="epoch" class="metric-value">0</div>
+    </div>
+    <div class="metric-box">
+      <div>Current Error</div>
+      <div id="error" class="metric-value">0.0000</div>
+    </div>
+  </div>
+  
+  <div class="container">
+    <div class="panel">
+      <h2>Decision Boundary</h2>
+      <canvas id="canvas" width="400" height="400"></canvas>
+      <div id="predictions"></div>
+    </div>
+    
+    <div class="panel">
+      <h2>Learning Curve</h2>
+      <canvas id="errorChart" width="400" height="300"></canvas>
+      
+      <h2>Network Parameters</h2>
+      <div id="parameters"></div>
+    </div>
+  </div>
+
+  <script>
+    // Get DOM elements
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const errorChart = document.getElementById('errorChart');
+    const errorCtx = errorChart.getContext('2d');
+    const initializeBtn = document.getElementById('initializeBtn');
+    const trainBtn = document.getElementById('trainBtn');
+    const stepBtn = document.getElementById('stepBtn');
+    const stopBtn = document.getElementById('stopBtn');
+    const predictionsEl = document.getElementById('predictions');
+    const parametersEl = document.getElementById('parameters');
+    const epochEl = document.getElementById('epoch');
+    const errorEl = document.getElementById('error');
+
+    // XOR problem data
+    const trainingData = [
+      [0, 0],
+      [0, 1],
+      [1, 0],
+      [1, 1]
+    ];
+    const labels = [0, 1, 1, 0];
+
+    // Neural Network parameters
+    let weights1, weights2, bias1, bias2;
+    let epoch = 0;
+    let errors = [];
+    let isTraining = false;
+    let animFrame;
+
+    // Sigmoid activation function
+    function sigmoid(x) {
+      return 1 / (1 + Math.exp(-x));
+    }
+
+    // Derivative of sigmoid for backpropagation
+    function sigmoidDerivative(x) {
+      return x * (1 - x);
+    }
+
+    // Initialize network with random weights
+    function initializeNetwork() {
+      if (isTraining) {
+        stopTraining();
+      }
+      
+      // Reset state
+      epoch = 0;
+      errors = [];
+      
+      // Initialize weights with random values between -1 and 1
+      weights1 = [
+        [Math.random() * 2 - 1, Math.random() * 2 - 1, Math.random() * 2 - 1, Math.random() * 2 - 1],
+        [Math.random() * 2 - 1, Math.random() * 2 - 1, Math.random() * 2 - 1, Math.random() * 2 - 1]
+      ];
+      
+      weights2 = [
+        [Math.random() * 2 - 1],
+        [Math.random() * 2 - 1],
+        [Math.random() * 2 - 1],
+        [Math.random() * 2 - 1]
+      ];
+      
+      bias1 = [Math.random() * 2 - 1, Math.random() * 2 - 1, Math.random() * 2 - 1, Math.random() * 2 - 1];
+      bias2 = [Math.random() * 2 - 1];
+      
+      // Update UI
+      updateCanvas();
+      updateErrorChart();
+      updatePredictions();
+      updateParameters();
+      updateMetrics(0);
+    }
+
+    // Make a prediction using the neural network
+    function predict(input) {
+      // Forward pass through hidden layer
+      const hidden = [];
+      for (let i = 0; i < 4; i++) {
+        const sum = weights1[0][i] * input[0] + weights1[1][i] * input[1] + bias1[i];
+        hidden.push(sigmoid(sum));
+      }
+      
+      // Forward pass through output layer
+      let output = 0;
+      for (let i = 0; i < 4; i++) {
+        output += hidden[i] * weights2[i][0];
+      }
+      output += bias2[0];
+      
+      return {
+        hidden: hidden,
+        output: sigmoid(output)
+      };
+    }
+
+    // Train for one epoch
+    function trainOneEpoch() {
+      const learningRate = 0.3;
+      let totalError = 0;
+      
+      // Train for each data point
+      for (let i = 0; i < trainingData.length; i++) {
+        const input = trainingData[i];
+        const target = labels[i];
+        
+        // Forward pass
+        const prediction = predict(input);
+        const output = prediction.output;
+        const hidden = prediction.hidden;
+        
+        // Calculate error
+        const error = 0.5 * Math.pow(target - output, 2);
+        totalError += error;
+        
+        // Backpropagation
+        // Output layer error
+        const deltaOutput = (output - target) * sigmoidDerivative(output);
+        
+        // Hidden layer error
+        const deltaHidden = [];
+        for (let j = 0; j < 4; j++) {
+          deltaHidden.push(deltaOutput * weights2[j][0] * sigmoidDerivative(hidden[j]));
+        }
+        
+        // Update weights and biases
+        // Update output layer weights
+        for (let j = 0; j < 4; j++) {
+          weights2[j][0] -= learningRate * deltaOutput * hidden[j];
+        }
+        
+        // Update output bias
+        bias2[0] -= learningRate * deltaOutput;
+        
+        // Update hidden layer weights
+        for (let j = 0; j < 4; j++) {
+          weights1[0][j] -= learningRate * deltaHidden[j] * input[0];
+          weights1[1][j] -= learningRate * deltaHidden[j] * input[1];
+        }
+        
+        // Update hidden biases
+        for (let j = 0; j < 4; j++) {
+          bias1[j] -= learningRate * deltaHidden[j];
+        }
+      }
+      
+      // Calculate average error
+      const avgError = totalError / trainingData.length;
+      
+      // Update epoch and store error history
+      epoch++;
+      errors.push(avgError);
+      
+      // Update UI
+      updateCanvas();
+      updateErrorChart();
+      updatePredictions();
+      updateParameters();
+      updateMetrics(avgError);
+      
+      return avgError;
+    }
+
+    // Train network for multiple epochs
+    function trainNetwork() {
+      if (isTraining) return;
+      
+      isTraining = true;
+      trainBtn.disabled = true;
+      stepBtn.disabled = true;
+      stopBtn.disabled = false;
+      
+      const maxEpochs = 5000;
+      let lastUpdateTime = Date.now();
+      
+      function trainBatch() {
+        if (!isTraining || epoch >= maxEpochs) {
+          stopTraining();
+          return;
+        }
+        
+        // Train 10 epochs per batch for better performance
+        for (let i = 0; i < 10 && epoch < maxEpochs; i++) {
+          const error = trainOneEpoch();
+          
+          // Stop if error is very low
+          if (error < 0.001) {
+            stopTraining();
+            return;
+          }
+        }
+        
+        // Only update visuals every 50ms for performance
+        const now = Date.now();
+        if (now - lastUpdateTime > 50) {
+          updateCanvas();
+          updateErrorChart();
+          lastUpdateTime = now;
+        }
+        
+        // Continue training in next frame
+        animFrame = requestAnimationFrame(trainBatch);
+      }
+      
+      // Start training loop
+      animFrame = requestAnimationFrame(trainBatch);
+    }
+
+    // Stop training
+    function stopTraining() {
+      isTraining = false;
+      trainBtn.disabled = false;
+      stepBtn.disabled = false;
+      stopBtn.disabled = true;
+      
+      if (animFrame) {
+        cancelAnimationFrame(animFrame);
+        animFrame = null;
+      }
+      
+      // Final UI update
+      updateCanvas();
+      updateErrorChart();
+      updatePredictions();
+      updateParameters();
+    }
+
+    // Update the decision boundary visualization
+    function updateCanvas() {
+      const width = canvas.width;
+      const height = canvas.height;
+      
+      // Clear canvas
+      ctx.clearRect(0, 0, width, height);
+      
+      // Draw decision boundary
+      const resolution = 40;
+      const cellSize = width / resolution;
+      
+      for (let y = 0; y < resolution; y++) {
+        for (let x = 0; x < resolution; x++) {
+          const inputX = x / (resolution - 1);
+          const inputY = y / (resolution - 1);
+          
+          // Get prediction for this point
+          const output = predict([inputX, inputY]).output;
+          
+          // Color based on output (blue for 0, red for 1)
+          const r = Math.round(output * 255);
+          const b = Math.round((1 - output) * 255);
+          ctx.fillStyle = `rgb(${r}, 100, ${b})`;
+          ctx.fillRect(x * cellSize, y * cellSize, cellSize, cellSize);
+        }
+      }
+      
+      // Draw hidden neuron decision boundaries
+      for (let i = 0; i < 4; i++) {
+        const w1 = weights1[0][i]; // weight for x
+        const w2 = weights1[1][i]; // weight for y
+        const b = bias1[i];        // bias
+        
+        // Skip if weights are too small
+        if (Math.abs(w1) < 0.001 && Math.abs(w2) < 0.001) continue;
+        
+        // Draw line where activation = 0 (w1*x + w2*y + b = 0)
+        ctx.strokeStyle = 'rgba(0, 0, 0, 0.5)';
+        ctx.setLineDash([5, 3]);
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        
+        if (Math.abs(w2) < 0.001) {
+          // Vertical line (x = -b/w1)
+          const x = -b / w1;
+          if (x >= 0 && x <= 1) {
+            ctx.moveTo(x * width, 0);
+            ctx.lineTo(x * width, height);
+          }
+        } else {
+          // Line: y = (-w1*x - b) / w2
+          const x1 = 0;
+          const y1 = (-w1 * x1 - b) / w2;
+          const x2 = 1;
+          const y2 = (-w1 * x2 - b) / w2;
+          
+          ctx.moveTo(x1 * width, y1 * height);
+          ctx.lineTo(x2 * width, y2 * height);
+        }
+        
+        ctx.stroke();
+      }
+      
+      // Draw grid lines
+      ctx.strokeStyle = 'rgba(0, 0, 0, 0.2)';
+      ctx.setLineDash([]);
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(0, 0);
+      ctx.lineTo(width, 0);
+      ctx.moveTo(0, 0);
+      ctx.lineTo(0, height);
+      ctx.moveTo(width, 0);
+      ctx.lineTo(width, height);
+      ctx.moveTo(0, height);
+      ctx.lineTo(width, height);
+      ctx.stroke();
+      
+      // Draw XOR points and labels
+      const pointRadius = 8;
+      
+      // Draw points for XOR inputs
+      for (let i = 0; i < trainingData.length; i++) {
+        const x = trainingData[i][0] * width;
+        const y = trainingData[i][1] * height;
+        
+        ctx.fillStyle = 'white';
+        ctx.strokeStyle = 'black';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(x, y, pointRadius, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+        
+        // Add label (expected output)
+        ctx.fillStyle = 'black';
+        ctx.font = 'bold 16px Arial';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(labels[i].toString(), x, y);
+      }
+    }
+
+    // Update error chart
+    function updateErrorChart() {
+      const width = errorChart.width;
+      const height = errorChart.height;
+      const margin = { top: 20, right: 20, bottom: 30, left: 40 };
+      const chartWidth = width - margin.left - margin.right;
+      const chartHeight = height - margin.top - margin.bottom;
+      
+      // Clear canvas
+      errorCtx.clearRect(0, 0, width, height);
+      
+      if (errors.length === 0) return;
+      
+      // Draw axes
+      errorCtx.strokeStyle = 'black';
+      errorCtx.lineWidth = 1;
+      errorCtx.beginPath();
+      errorCtx.moveTo(margin.left, margin.top);
+      errorCtx.lineTo(margin.left, height - margin.bottom);
+      errorCtx.lineTo(width - margin.right, height - margin.bottom);
+      errorCtx.stroke();
+      
+      // Add labels
+      errorCtx.fillStyle = 'black';
+      errorCtx.font = '12px Arial';
+      errorCtx.textAlign = 'center';
+      errorCtx.fillText('Epochs', width / 2, height - 5);
+      
+      errorCtx.save();
+      errorCtx.translate(15, height / 2);
+      errorCtx.rotate(-Math.PI / 2);
+      errorCtx.textAlign = 'center';
+      errorCtx.fillText('Error', 0, 0);
+      errorCtx.restore();
+      
+      if (errors.length <= 1) return;
+      
+      // Calculate scales
+      const maxEpoch = Math.max(epoch, 100);
+      const maxError = Math.min(1, Math.max(...errors) * 1.1);
+      
+      // Draw error line
+      errorCtx.strokeStyle = 'blue';
+      errorCtx.lineWidth = 2;
+      errorCtx.beginPath();
+      
+      for (let i = 0; i < errors.length; i++) {
+        const x = margin.left + (i / maxEpoch) * chartWidth;
+        const y = height - margin.bottom - (errors[i] / maxError) * chartHeight;
+        
+        if (i === 0) {
+          errorCtx.moveTo(x, y);
+        } else {
+          errorCtx.lineTo(x, y);
+        }
+      }
+      
+      errorCtx.stroke();
+      
+      // Add scale labels
+      errorCtx.fillStyle = 'black';
+      errorCtx.textAlign = 'right';
+      errorCtx.textBaseline = 'middle';
+      errorCtx.fillText('0', margin.left - 5, height - margin.bottom);
+      errorCtx.fillText(maxError.toFixed(2), margin.left - 5, margin.top);
+      
+      errorCtx.textAlign = 'center';
+      errorCtx.textBaseline = 'top';
+      errorCtx.fillText('0', margin.left, height - margin.bottom + 15);
+      errorCtx.fillText(maxEpoch.toString(), width - margin.right, height - margin.bottom + 15);
+    }
+
+    // Update predictions display
+    function updatePredictions() {
+      let html = '<h3>XOR Predictions</h3>';
+      
+      for (let i = 0; i < trainingData.length; i++) {
+        const input = trainingData[i];
+        const expected = labels[i];
+        const actual = predict(input).output;
+        const isCorrect = (actual > 0.5 && expected === 1) || (actual <= 0.5 && expected === 0);
+        
+        html += `<div class="prediction ${isCorrect ? 'correct' : 'incorrect'}">
+          <strong>Input: [${input}]</strong><br>
+          Output: ${actual.toFixed(4)}<br>
+          Expected: ${expected}
+        </div>`;
+      }
+      
+      predictionsEl.innerHTML = html;
+    }
+
+    // Update parameters display
+    function updateParameters() {
+      let html = '<h3>Input→Hidden Weights</h3>';
+      
+      // Input->Hidden weights
+      html += '<table>';
+      html += '<tr><th></th><th>H1</th><th>H2</th><th>H3</th><th>H4</th></tr>';
+      
+      for (let i = 0; i < 2; i++) {
+        html += `<tr><td><strong>X${i+1}</strong></td>`;
+        
+        for (let j = 0; j < 4; j++) {
+          html += `<td>${weights1[i][j].toFixed(3)}</td>`;
+        }
+        
+        html += '</tr>';
+      }
+      
+      html += '</table>';
+      
+      // Hidden biases
+      html += '<h3>Hidden Layer Biases</h3>';
+      html += '<table><tr>';
+      
+      for (let i = 0; i < 4; i++) {
+        html += `<th>H${i+1}</th>`;
+      }
+      
+      html += '</tr><tr>';
+      
+      for (let i = 0; i < 4; i++) {
+        html += `<td>${bias1[i].toFixed(3)}</td>`;
+      }
+      
+      html += '</tr></table>';
+      
+      // Hidden->Output weights
+      html += '<h3>Hidden→Output Weights</h3>';
+      html += '<table>';
+      html += '<tr><th>Neuron</th><th>Weight</th></tr>';
+      
+      for (let i = 0; i < 4; i++) {
+        html += `<tr><td><strong>H${i+1}</strong></td>`;
+        html += `<td>${weights2[i][0].toFixed(3)}</td></tr>`;
+      }
+      
+      html += '</table>';
+      
+      // Output bias
+      html += '<h3>Output Layer Bias</h3>';
+      html += `<div style="text-align: center; padding: 8px; background: #f9f9f9; border-radius: 4px;">${bias2[0].toFixed(3)}</div>`;
+      
+      parametersEl.innerHTML = html;
+    }
+
+    // Update metrics display
+    function updateMetrics(error) {
+      epochEl.textContent = epoch;
+      errorEl.textContent = error.toFixed(6);
+    }
+
+    // Add event listeners
+    initializeBtn.addEventListener('click', initializeNetwork);
+    trainBtn.addEventListener('click', trainNetwork);
+    stepBtn.addEventListener('click', trainOneEpoch);
+    stopBtn.addEventListener('click', stopTraining);
+
+    // Initialize on page load
+    initializeNetwork();
+  </script>
+</body>
+</html>
